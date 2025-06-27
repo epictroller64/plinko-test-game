@@ -13,7 +13,7 @@ impl BlinkoBall {
     }
 
     pub fn can_move(&self, direction: Direction) -> bool {
-        const MOVE_INTERVAL: f32 = 5.0;
+        const MOVE_INTERVAL: f32 = 1.0;
         match direction {
             Direction::Down => self.y + MOVE_INTERVAL <= screen_height() - self.r,
             Direction::Up => self.y - MOVE_INTERVAL >= 0.0 + self.r,
@@ -64,6 +64,14 @@ impl Bubble {
         }
     }
 
+    pub fn does_collide(&self, x: f32, y: f32, r: f32) -> bool {
+        let dx = self.x - x;
+        let dy = self.y - y;
+        let distance_squared = dx * dx + dy * dy;
+        let radius_sum = self.r + r;
+        distance_squared <= radius_sum * radius_sum
+    }
+
     pub fn draw(&self) {
         draw_circle(self.x, self.y, self.r, self.color);
 
@@ -78,22 +86,66 @@ impl Bubble {
 
 #[macroquad::main("BasicShapes")]
 async fn main() {
+    let mut blinko = BlinkoBall::new(screen_width() / 2.0, 9.0, 9.0, GREEN);
     let bubbles = draw_bubbles();
+    let mut move_in_progress = false;
+    let mut curr_dir = Direction::Right;
+    let mut move_counter = 0;
     loop {
+        let mut does_collide = false;
         for bubble in &bubbles {
+            if !does_collide {
+                if bubble.does_collide(blinko.x, blinko.y, blinko.r) {
+                    // Collides, now we should send it left or right, and until it gets away from it
+                    does_collide = true;
+                }
+            }
             bubble.draw();
+        }
+        if does_collide {
+            if move_in_progress {
+                blinko.move_circle(curr_dir.clone());
+                move_counter += 1;
+            } else {
+                if rand::gen_range(0, 2) == 0 {
+                    blinko.move_circle(Direction::Right);
+                    move_in_progress = true;
+                    curr_dir = Direction::Right;
+                } else {
+                    blinko.move_circle(Direction::Left);
+                    move_in_progress = true;
+                    curr_dir = Direction::Left;
+                }
+            }
+        } else {
+            const STOPPER: i32 = 25;
+            if move_counter >= STOPPER {
+                move_counter = 0;
+                move_in_progress = false;
+            }
+            blinko.move_circle(Direction::Down);
+        }
+        blinko.draw();
+        if blinko.y > screen_height() {
+            // create new one
+            blinko = BlinkoBall::new(screen_width() / 2.0, 10.0, 10.0, GREEN);
         }
         next_frame().await
     }
 }
 
+fn blinko_drop(blinko: &BlinkoBall) {
+    // Drop the blinko ball further and check for colissions
+}
+
 fn draw_bubbles() -> Vec<Bubble> {
     let w = screen_width();
     let h = screen_height();
-    let padding = 15.0;
-    let r = 15.0;
+    let padding = 20.0;
+    let r = 5.0;
     let total_bubble_diameter = r * 2.0 + padding;
-    let mut max_bubbles_per_row = ((w + padding) / total_bubble_diameter).floor() as i32;
+    //let mut max_bubbles_per_row = ((w + padding) / total_bubble_diameter).floor() as i32;
+    let mut max_bubbles_per_row = 15;
     let mut bubbles: Vec<Bubble> = Vec::new();
     let mut y = h - r - padding;
     let mut index = 0;
@@ -114,11 +166,7 @@ fn draw_bubbles() -> Vec<Bubble> {
             bubbles.push(bubble);
             index += 1;
         }
-        if max_bubbles_per_row == 2 {
-            max_bubbles_per_row = 1;
-        } else {
-            max_bubbles_per_row -= 2;
-        }
+        max_bubbles_per_row -= 1;
         y -= total_bubble_diameter;
     }
     bubbles
